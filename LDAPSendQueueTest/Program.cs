@@ -24,7 +24,7 @@ namespace LDAPSendQueueTest
             var workerList = new List<QueryWorker>();
             for (int x = 0; x < numThreads; x++)
             {
-                Console.WriteLine("Starting thread...");
+                Console.WriteLine("Starting threads...");
                 var worker = new QueryWorker(ldapConnection, container, filter, pageSize);
                 workerList.Add(worker);
                 var thread = new System.Threading.Thread(new System.Threading.ThreadStart(worker.Go));
@@ -32,22 +32,34 @@ namespace LDAPSendQueueTest
                 thread.Start();
             }
 
-            Console.WriteLine("Waiting for threads to complete...");
-            bool atLeastOneThreadActive = false;
-            do
+            Console.WriteLine("Sending additional LDAP queries on main thread...");
+            try
             {
-                atLeastOneThreadActive = false;
-
-                var searchRequest = new SearchRequest(container, "(objectClass=*)", SearchScope.Base, null);
-                SearchResponse searchResponse = (SearchResponse)ldapConnection.SendRequest(searchRequest);
-
-                foreach (var thread in threadList)
+                bool atLeastOneThreadActive = false;
+                do
                 {
-                    if (thread.IsAlive)
-                        atLeastOneThreadActive = true;
-                }
+                    atLeastOneThreadActive = false;
 
-            } while (atLeastOneThreadActive);
+                    var searchRequest = new SearchRequest(container, "(objectClass=*)", SearchScope.Base, null);
+                    SearchResponse searchResponse = (SearchResponse)ldapConnection.SendRequest(searchRequest);
+
+                    foreach (var thread in threadList)
+                    {
+                        if (thread.IsAlive)
+                            atLeastOneThreadActive = true;
+                    }
+
+                } while (atLeastOneThreadActive);
+            }
+            catch (Exception exc)
+            {
+                Console.WriteLine("Exception on main thread: " + exc.Message);
+            }
+
+            foreach (var thread in threadList)
+            {
+                thread.Join();
+            }
 
             foreach (var worker in workerList)
             {
@@ -76,8 +88,10 @@ namespace LDAPSendQueueTest
 
         public void Go()
         {
+            int threadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+
             try
-            {
+            {    
                 string filter = "(objectClass=*)";
                 var searchRequest = new SearchRequest(container, filter, SearchScope.Subtree, null);
                 var pageControl = new PageResultRequestControl(pageSize);
@@ -90,7 +104,7 @@ namespace LDAPSendQueueTest
                     SearchResponse searchResponse = (SearchResponse)ldapConn.SendRequest(searchRequest);
                     var pageResponse = (PageResultResponseControl)searchResponse.Controls[0];
                     output.Add(string.Format("Thread {0} retrieved page {1} containing {2} entries.",
-                        System.Threading.Thread.CurrentThread.ManagedThreadId, pageCount, searchResponse.Entries.Count));
+                        threadId, pageCount, searchResponse.Entries.Count));
 
                     if (pageResponse.Cookie.Length == 0)
                         break;
@@ -98,11 +112,11 @@ namespace LDAPSendQueueTest
                     pageControl.Cookie = pageResponse.Cookie;
                 }
 
-                output.Add(string.Format("Thread {0} completed.", System.Threading.Thread.CurrentThread.ManagedThreadId));
+                output.Add(string.Format("Thread {0} completed.", threadId));
             }
             catch (Exception exc)
             {
-                output.Add("Exception: " + exc.Message);
+                output.Add(string.Format("Thread {0} encountered exception: {1}", threadId, exc.Message));
             }
         }
     }
