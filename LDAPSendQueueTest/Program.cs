@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.DirectoryServices.Protocols;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace LDAPSendQueueTest
 {
@@ -92,7 +90,6 @@ namespace LDAPSendQueueTest
 
             try
             {    
-                string filter = "(objectClass=*)";
                 var searchRequest = new SearchRequest(container, filter, SearchScope.Subtree, null);
                 var pageControl = new PageResultRequestControl(pageSize);
                 searchRequest.Controls.Add(pageControl);
